@@ -24,7 +24,7 @@ DSH 0.1.7 的原生 Team 编队里，`spawn_teammate` 不支持给队员指定�
 
 ### 安装
 
-**方式一（推荐）**：DSH 设置 → 插件市场 搜索 `dsh-subagent-model-config`（收录审核中；收录后可直接安装）。
+**方式一（推荐）**：DSH 设置 → 插件市场 搜索 `dsh-subagent-model-config`（已上架官方目录，可直接安装）。
 
 **方式二（手动）**：把本仓库克隆到本地，在 profile 的 `package.json` 里加：
 
@@ -53,12 +53,28 @@ DSH 0.1.7 的原生 Team 编队里，`spawn_teammate` 不支持给队员指定�
 视频解析任务的**执行模型与思考开关必须人工点名可控**，不允许由兜底规则或默认值自动决定。为此本插件在 spawn 入口加了一道闸门：
 
 - 队员名以 `video-` / `video_` 开头（大小写不敏感），且 `config.json` 里**没有任何规则命中** ⇒ 立即抛错、不创建队员，错误码 `DSH_SUBAGENT_MODEL_CONFIG_UNROUTED_VIDEO`，报错信息点名队员名、给出合法命名清单与规则表路径
-- 点名式命名约定：`video-<模型族>-<on|off>-<序号>`，例如 `video-doubao-off-1`、`video-mimo-pro-on-2`；`off` = 关思考（别名模型无条件发 `thinking:{type:'disabled'}`），`on` = 开思考（不发送 thinking，走服务端官方默认）
+- 点名式命名约定：`video-<模型族>-<on|off>-<序号>`，例如 `video-doubao-on-1`、`video-mimo-pro-on-2`（**可用前缀以 `config.json` 规则表为准**——闸门报错信息会实时列出当前全部合法前缀）；`off` = 关思考（别名模型无条件发 `thinking:{type:'disabled'}`），`on` = 开思考（不发送 thinking，走服务端官方默认）
 - **fail-closed**：`config.json` 缺失 / 读坏 / 规则为空时，所有视频名字一律被拒绝——"不确定用哪个模型"就等于"不许跑"
 - 非视频名字、以及 `enabled: false`（一键关闭）完全不受影响；官方非编队子代理路径不带队员名，也不受影响
 - 命中规则但规则没写模型（待指定）**视为已点名**，放行
 
 闸门在 `lib/index.js` 的 `assertVideoNamed(name, config)`，单测见 `test/gate.test.mjs`。
+
+### 视频预设下的队员侧限制（v0.3.0）
+
+当父会话的 agent preset 是 `video`（视频解析预设）时，本插件在同一包装点额外注入两项：
+
+| 注入项 | 作用 |
+|---|---|
+| `request.persona` | 队员角色卡，**遮蔽部署 persona**（主窗身份卡对队员不再生效） |
+| `request.toolFilter.allow` | 工具白名单（fail-closed）：`watch_video` / `read` `write` `edit` `glob` `grep` / `pwsh` / `job_list` `job_output` `job_kill` / `skill` / `todo_write` |
+
+两条硬约束（都有用例钉死，见 `test/video-restrictions.test.mjs`）：
+
+1. **判定只看父会话 preset**——其它模式（standard / cordis / minimal）的子代理完全不受影响。
+2. **白名单只列「继承层」工具**。团队通信工具（`send_message` / `team_task_*` / `list_agents` / `wait_agent` / `interrupt_agent` / `spawn_teammate`）由 agent-team 注册在**成员自己的 scope**（own 层），而 `tools.restrict()` 只过滤继承层（global + 祖先层）、从不碰 own 层——因此它们**天然保留**，写进白名单反而会因 `unknown global tool` 抛错、队员起不来。
+
+队员的**记忆注入**由档案层 `openviking-memory-runtime.skipSubagentSessions: true` 拦截（判定 `header.origin === "subagent"`），与本插件无关，无需改记忆插件本体。
 
 ### 兼容性
 

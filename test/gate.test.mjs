@@ -7,6 +7,9 @@
  * 说明：断言「拒绝」的用例会往插件目录的 .probe.jsonl 追加一行取证
  * （spawn-rejected-unrouted-video），这是闸门的既有行为，不是副作用泄漏。
  * 本文件不依赖 cordis、不依赖运行时，可直接 `node --test` 复现。
+ *
+ * 点名式前缀**从 config.json 动态取**——规则表是唯一事实源，增删规则不必改测试
+ * （写死清单曾与规则表脱节，导致本套件在现行配置下必红）。
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,20 +17,16 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assertVideoNamed, UNROUTED_VIDEO_CODE } from '../lib/index.js';
+import { assertVideoNamed, videoNameHint, UNROUTED_VIDEO_CODE } from '../lib/index.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CONFIG = JSON.parse(readFileSync(join(HERE, '..', 'config.json'), 'utf8'));
 
-/** 统一命名下的 6 个点名式前缀（config.json 的视频规则集）。 */
-const NAMED = [
-  'video-doubao-off',
-  'video-doubao-on',
-  'video-mimo-pro-off',
-  'video-mimo-pro-on',
-  'video-mimo-flash-off',
-  'video-mimo-flash-on',
-];
+/** 点名式前缀（去通配尾星）：直接来自 config.json 的 video- 规则。 */
+const NAMED = (CONFIG.rules ?? [])
+  .map((rule) => (typeof rule?.match === 'string' ? rule.match.trim() : ''))
+  .filter((match) => /^video[-_]/i.test(match))
+  .map((match) => match.replace(/\*+$/, ''));
 
 /** 捕获同步抛错的辅助。 */
 function catchError(fn) {
@@ -40,6 +39,10 @@ function catchError(fn) {
 }
 
 describe('闸门 — 点名式视频队员名一律放行', () => {
+  it('规则表至少有一条 video- 通配（前置断言）', () => {
+    assert.ok(NAMED.length > 0, 'config.json 里应至少有一条 video- 前缀规则');
+  });
+
   for (const prefix of NAMED) {
     it(`${prefix}-1 放行`, () => {
       assert.doesNotThrow(() => assertVideoNamed(`${prefix}-1`, CONFIG));
@@ -59,8 +62,10 @@ describe('闸门 — 点名式视频队员名一律放行', () => {
     }
   });
 
-  it('大小写不敏感：Video-Doubao-Off-1 与 video-doubao-off-1 同等对待', () => {
-    assert.doesNotThrow(() => assertVideoNamed('Video-Doubao-Off-1', CONFIG));
+  it('大小写不敏感：前缀大写后仍按同一规则命中', () => {
+    const prefix = NAMED[0];
+    const upper = `V${prefix.slice(1)}`;
+    assert.doesNotThrow(() => assertVideoNamed(`${upper}-1`, CONFIG));
     const error = catchError(() => assertVideoNamed('Video-Unknown-Off-1', CONFIG));
     assert.ok(error, '大写前缀的野名字同样必须被拦下');
   });
@@ -76,14 +81,22 @@ describe('闸门 — 视频前缀但未命中规则 ⇒ 抛错拒绝启动', () 
       assert.equal(error.code, UNROUTED_VIDEO_CODE);
       assert.match(error.message, /拒绝启动视频队员/);
       assert.ok(error.message.includes(name), '报错必须点名是哪个队员名');
-      assert.match(error.message, /video-doubao-off-<序号>/, '报错必须给出合法名字清单');
     });
   }
 
+  it('报错给出的合法名字清单＝当前规则表的 video- 前缀（不写死）', () => {
+    const error = catchError(() => assertVideoNamed('video-zzz-unrouted-1', CONFIG));
+    assert.ok(error);
+    for (const prefix of NAMED) {
+      assert.ok(error.message.includes(`${prefix}-<序号>`), `报错清单应含 ${prefix}-<序号>`);
+    }
+    assert.equal(videoNameHint(CONFIG).includes('<序号>'), true);
+  });
+
   it('规则表为空 ⇒ 任何视频前缀名字都被拒绝', () => {
     const empty = { enabled: true, debug: false, rules: [] };
-    for (const name of NAMED.map((p) => `${p}-1`)) {
-      assert.equal(catchError(() => assertVideoNamed(name, empty))?.code, UNROUTED_VIDEO_CODE, name);
+    for (const prefix of NAMED) {
+      assert.equal(catchError(() => assertVideoNamed(`${prefix}-1`, empty))?.code, UNROUTED_VIDEO_CODE, prefix);
     }
   });
 
@@ -108,7 +121,12 @@ describe('闸门 — 关闭开关与降级语义', () => {
   });
 
   it('命中规则但规则没有路由字段（待指定模型）⇒ 闸门视为已点名，放行', () => {
-    const pending = { enabled: true, debug: false, rules: [{ match: 'video-doubao-off*' }] };
-    assert.doesNotThrow(() => assertVideoNamed('video-doubao-off-1', pending));
+    const pending = { enabled: true, debug: false, rules: [{ match: `${NAMED[0]}*` }] };
+    assert.doesNotThrow(() => assertVideoNamed(`${NAMED[0]}-1`, pending));
+  });
+
+  it('videoNameHint：空规则表给出可行动提示，而非空串', () => {
+    assert.equal(videoNameHint({ rules: [] }).includes('没有 video- 前缀规则'), true);
+    assert.equal(videoNameHint(null).includes('没有 video- 前缀规则'), true);
   });
 });

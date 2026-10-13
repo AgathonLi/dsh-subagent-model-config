@@ -1,7 +1,8 @@
 {
   "name": "dsh-subagent-model-config",
-  "version": "0.3.0",
-  "description": "Configure per-teammate model & reasoning effort for DeepSeek Harness native agent teams, with a settings UI; video-crew names are hard-gated (spawn refused unless a rule matches); under the video preset, spawned teammates get a persona override and a fail-closed toolFilter.allow whitelist. 为 DSH 原生编队队员可视化配置模型与推理档位；视频队员名硬闸门；video 预设下对子代理注入 persona 与 fail-closed 工具白名单。",
+  "version": "0.3.1",
+  "description": "可视化配置编队队员（Team teammate）的模型与推理档位 + 视频预设下的队员侧能力限制：运行时包装 subagents.startContinuable + agentTeams.spawnTeammate，不改官方任何文件、可逆、可一键关闭；对视频队员名加硬闸门（未命中规则即拒绝启动，执行模型必须人工点名可控）；当父会话 preset 为 video 时，对子代理注入 persona（遮蔽主窗身份卡）与 toolFilter.allow（视频解析工具白名单，fail-closed；团队通信工具在 own 层天然保留）。",
+  "private": true,
   "type": "module",
   "exports": {
     ".": "./lib/index.js",
@@ -25,33 +26,5 @@
   },
   "scripts": {
     "test": "node --test"
-  },
-  "files": [
-    "lib",
-    "cordis.patch.yml"
-  ],
-  "license": "MIT",
-  "author": {
-    "name": "sequoiayunus-hue",
-    "url": "https://github.com/sequoiayunus-hue"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/sequoiayunus-hue/dsh-subagent-model-config.git"
-  },
-  "bugs": {
-    "url": "https://github.com/sequoiayunus-hue/dsh-subagent-model-config/issues"
-  },
-  "homepage": "https://github.com/sequoiayunus-hue/dsh-subagent-model-config#readme",
-  "keywords": [
-    "dsh",
-    "deepseek-harness",
-    "subagent",
-    "team",
-    "teammate",
-    "model-config",
-    "reasoning-effort",
-    "persona",
-    "tool-filter"
-  ]
+  }
 }

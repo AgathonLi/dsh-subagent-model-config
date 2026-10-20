@@ -144,6 +144,50 @@ describe('注入点自适应 — ≤0.2.0 的 startContinuable 不回归', () =>
   });
 });
 
+describe('停用和卸载回退', () => {
+  it('enabled:false 不注入模型，也不注入 video 预设限制', async () => {
+    writeFileSync(CONFIG_FILE, JSON.stringify({ ...FIXTURE, enabled: false }), 'utf8');
+    const runtime = makeRuntime('startActivation');
+    const team = makeTeam(runtime, 'startActivation');
+    const dispose = install(runtime, team);
+    try {
+      await team.spawnTeammate(CALLER, { name: 'seam-probe-1' });
+      assert.equal(runtime.seen[0].request.agentOptions, undefined);
+      const request = {
+        prompt: 'probe',
+        parent: { ctx: { get: () => ({ composedPreset: () => 'video' }) } },
+      };
+      await runtime.startActivation({ provider: 'spawn', request });
+      assert.equal(runtime.seen[1].request, request);
+      assert.equal(runtime.seen[1].request.persona, undefined);
+      assert.equal(runtime.seen[1].request.toolFilter, undefined);
+    } finally {
+      dispose();
+      writeFileSync(CONFIG_FILE, JSON.stringify(FIXTURE), 'utf8');
+    }
+  });
+
+  for (const method of ['startActivation', 'startContinuable']) {
+    it(`${method} 卸载后恢复原型和实例描述符，后续调用不注入`, async () => {
+      const runtime = makeRuntime(method);
+      const team = makeTeam(runtime, method);
+      const targets = [[runtime, method], [team, 'spawnTeammate']];
+      const before = targets.map(([target, key]) => ({
+        own: Object.getOwnPropertyDescriptor(target, key),
+        proto: Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), key),
+      }));
+      const dispose = install(runtime, team);
+      dispose();
+      for (const [i, [target, key]] of targets.entries()) {
+        assert.deepEqual(Object.getOwnPropertyDescriptor(target, key), before[i].own);
+        assert.deepEqual(Object.getOwnPropertyDescriptor(Object.getPrototypeOf(target), key), before[i].proto);
+      }
+      await team.spawnTeammate(CALLER, { name: 'seam-probe-1' });
+      assert.equal(runtime.seen[0].request.agentOptions, undefined);
+    });
+  }
+});
+
 describe('注入点自适应 — 两个候选名都不在时必须留痕', () => {
   it('既不 startActivation 也不 startContinuable ⇒ 不静默：写 patch-injection-point', () => {
     const before = existsSync(PROBE_FILE) ? readFileSync(PROBE_FILE, 'utf8') : '';

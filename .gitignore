@@ -1,0 +1,6 @@
+/config.json
+/config.json.tmp
+/.probe*.jsonl
+/node_modules/
+/.local/
+/*.tgz

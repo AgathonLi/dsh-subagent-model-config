@@ -8,21 +8,23 @@
  * （spawn-rejected-unrouted-video），这是闸门的既有行为，不是副作用泄漏。
  * 本文件不依赖 cordis、不依赖运行时，可直接 `node --test` 复现。
  *
- * 点名式前缀**从 config.json 动态取**——规则表是唯一事实源，增删规则不必改测试
- * （写死清单曾与规则表脱节，导致本套件在现行配置下必红）。
+ * 点名式前缀从固定测试规则派生，不读取安装环境的个人配置。
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { assertVideoNamed, videoNameHint, UNROUTED_VIDEO_CODE } from '../lib/index.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CONFIG = JSON.parse(readFileSync(join(HERE, '..', 'config.json'), 'utf8'));
+const CONFIG = {
+  enabled: true,
+  debug: false,
+  rules: [
+    { match: 'video-fixture-high*', provider: 'fixture', model: 'test-model', reasoningEffort: 'high' },
+    { match: 'video-fixture-off*', provider: 'fixture', model: 'test-model', reasoningEffort: 'off' },
+  ],
+};
 
-/** 点名式前缀（去通配尾星）：直接来自 config.json 的 video- 规则。 */
+/** 点名式前缀（去通配尾星）：来自本测试的 video- 规则。 */
 const NAMED = (CONFIG.rules ?? [])
   .map((rule) => (typeof rule?.match === 'string' ? rule.match.trim() : ''))
   .filter((match) => /^video[-_]/i.test(match))
@@ -40,7 +42,7 @@ function catchError(fn) {
 
 describe('闸门 — 点名式视频队员名一律放行', () => {
   it('规则表至少有一条 video- 通配（前置断言）', () => {
-    assert.ok(NAMED.length > 0, 'config.json 里应至少有一条 video- 前缀规则');
+    assert.ok(NAMED.length > 0, '测试夹具应至少有一条 video- 前缀规则');
   });
 
   for (const prefix of NAMED) {

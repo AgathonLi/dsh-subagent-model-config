@@ -36,7 +36,7 @@ DSH 原生 Team 编队的 `spawn_teammate` 只有 name / description / prompt / 
 { "dsh-subagent-model-config": "link:/path/to/dsh-subagent-model-config" }
 ```
 
-并把它加入 profile 的 `dsh.bundles`，重启 DSH。
+并把它加入 profile 的 `dsh.profile.bundles`，重启 DSH。
 
 **配置**
 
@@ -73,13 +73,16 @@ DSH 原生 Team 编队的 `spawn_teammate` 只有 name / description / prompt / 
 
 ### 工作原理
 
-插件在运行时包装两个 DSH 内部接口：`agentTeams.spawnTeammate`（采集队员名）与 `SubagentRuntime.<seam>`（注入点；`<seam>` 随 DSH 版本改名 —— ≤0.2.0 叫 `startContinuable`，0.2.1 起叫 `startActivation`，插件按存在性自适应挑选，两个版本都能挂上；只认老名字会在新版上静默失效）。派单发生时按队员名匹配规则表，把命中的 provider / model / reasoningEffort 写进官方原生支持的 `SubagentStartRequest.agentOptions`——只接上编队路径没接的线，不改任何官方行为。包装装在实例与原型两层（幂等防重入），内部异常一律只记录不抛出；配置为空或关闭时，行为与未装本插件完全一致。
+插件在运行时包装两个 DSH 内部接口：`agentTeams.spawnTeammate`（采集队员名）与 `SubagentRuntime.<seam>`（注入点；`<seam>` 随 DSH 版本改名 —— ≤0.2.0 叫 `startContinuable`，0.2.1 起叫 `startActivation`，插件按存在性自适应挑选，两个版本都能挂上；只认老名字会在新版上静默失效）。派单发生时按队员名匹配规则表，把命中的 provider / model / reasoningEffort 写进官方原生支持的 `SubagentStartRequest.agentOptions`——只接上编队路径没接的线，不改任何官方行为。包装装在实例与原型两层（幂等防重入）。普通注入异常记录后继续启动；视频队员闸门会抛错拒绝。`enabled:false` 停止模型与视频限制注入，但包装和启动诊断仍在；空配置不等于关闭视频约束。
 
 ### 兼容性与测试
 
 - **声明范围**：`engines.dsh >= 0.1.7-alpha.1`，Node >= 22
 - **实测**：DSH 0.1.7-alpha.2（首发实测）；DSH 0.2.0 桌面端（日常在用）；DSH 0.2.1-rc.2（nightly，注入点已改名 `startActivation`）
-- `npm test`：143 用例（17 套件）全过
+- 本 fork 在 Windows / Node 24.21.0 上运行 `node --test`：143 用例、21 套件全部通过；无需个人 `config.json`。包含新旧启动接口、停用注入与卸载恢复测试。
+- 上述 DSH 版本实测来自上游报告；本 fork 的真实宿主路由验证需在安装后另行完成。
+- 普通队员未命中规则、配置读取失败或接口包装失败时，仍可能继承默认模型。使用无敏感资料的任务核对实际 provider/model 后再投入工作。
+- 测试会临时改写包根配置；只在开发副本运行，不要在已被 DSH 加载的安装副本中运行。
 - 本插件钩在 DSH 内部运行时接口上，官方未来版本可能改变这些接口导致失效；遇到问题欢迎提 issue
 
 ### 视频预设配套：队员闸门与能力限制
@@ -115,19 +118,22 @@ This plugin fills that gap: name-based rules, each teammate runs on the provider
 
 ### Quick start
 
-Install: DSH Settings → Plugins → search `dsh-subagent-model-config`. Manual: clone this repo, link it in your profile's `package.json`, add it to `dsh.bundles`, restart DSH.
+Install: DSH Settings → Plugins → search `dsh-subagent-model-config`. Manual: clone this repo, link it in your profile's `package.json`, add it to `dsh.profile.bundles`, restart DSH.
 
 Configure: Settings → **Subagent Models** — add rules with a name pattern, optional provider / model / reasoning effort (dropdown candidates come from the selected model itself).
 
 ### How it works
 
-The plugin wraps two DSH internals at runtime: `agentTeams.spawnTeammate` (captures the teammate name) and `SubagentRuntime.<seam>` (injection point; `<seam>` was renamed across DSH releases — `startContinuable` up to 0.2.0, `startActivation` from 0.2.1 — and the plugin picks whichever exists, so a hardcoded old name no longer silently disables every rule). On spawn it matches the name against the rule table and writes the resolved fields into `SubagentStartRequest.agentOptions` — a field DSH natively supports but the team path never wired up. Wraps are installed on both instance and prototype (idempotent); internal errors are logged, never thrown; with an empty or disabled config the behavior is identical to not having the plugin.
+The plugin wraps two DSH internals at runtime: `agentTeams.spawnTeammate` (captures the teammate name) and `SubagentRuntime.<seam>` (injection point; `<seam>` was renamed across DSH releases — `startContinuable` up to 0.2.0, `startActivation` from 0.2.1 — and the plugin picks whichever exists, so a hardcoded old name no longer silently disables every rule). On spawn it matches the name against the rule table and writes the resolved fields into `SubagentStartRequest.agentOptions` — a field DSH natively supports but the team path never wired up. Wraps are installed on both instance and prototype (idempotent). Ordinary injection errors are logged and startup continues; the video-name gate can reject startup. `enabled:false` stops model and video-restriction injection, but wrappers and startup diagnostics remain. Empty config does not disable video constraints.
 
 ### Compatibility & tests
 
 - `engines.dsh >= 0.1.7-alpha.1`, Node >= 22
 - Tested on DSH 0.1.7-alpha.2, the 0.2.0 desktop app (daily driver), and the 0.2.1-rc.2 nightly (injection point = `startActivation`)
-- `npm test`: 143 cases, 17 suites, all passing
+- This fork: `node --test` on Windows / Node 24.21.0 passes 143 tests in 21 suites without a personal `config.json`. Includes both startup interfaces, disabled injection, and disposal restoration.
+- DSH version smoke-test claims above are upstream reports. This fork still needs live host routing verification after installation.
+- Unmatched ordinary teammates, unreadable config, or failed hooks can inherit the default model. Verify actual provider/model with non-sensitive tasks first.
+- Tests temporarily overwrite package-root config. Run them only in a development copy, never a copy loaded by DSH.
 - The plugin hooks DSH internal runtime APIs that may change in future releases — please open an issue if it breaks
 
 ### Video-preset companion: gate & teammate restrictions
